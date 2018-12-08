@@ -38,12 +38,12 @@ void PID::Init(double Kp, double Ki, double Kd) {
 
 void PID::UpdateError(double cte) {
 
-    // i_error = cte - p_error;
-    // d_error += cte;
+    // d_error = cte - p_error;
+    // i_error += cte;
     // p_error = cte;
 
-    parameters[1] = cte - parameters[0];
-    parameters[2] += cte;
+    parameters[2] = cte - parameters[0];
+    parameters[1] += cte;
     parameters[0] = cte;
 }
 

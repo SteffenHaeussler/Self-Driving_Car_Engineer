@@ -19,4 +19,5 @@ Sensor Fusion, Localization, Pathfinding, PID-control, which were implemented in
 
 # Requirements
 
-#
+For C++-Projects: README inside the repo
+For python projects: [requirements](https://github.com/udacity/CarND-Term1-Starter-Kit)

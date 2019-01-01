@@ -2,7 +2,7 @@ from styx_msgs.msg import TrafficLight
 
 import tensorflow as tf
 import numpy as np
-
+import yaml
 import rospy
 import datetime
 
@@ -10,10 +10,13 @@ class TLClassifier(object):
     def __init__(self):
 
         config_string = rospy.get_param("/traffic_light_config")
-        self.config = yaml.safe_load(config_string)
-
+         self.config = yaml.safe_load(config_string)
         model_name = 'frozen_inference_graph.pb'
-        model_path = 'light_classification/model/' + model_name
+
+        if self.config['is_site']:
+            model_path = 'light_classification/model/real_' + model_name
+        else:
+            model_path = 'light_classification/model/sim_' + model_name
 
         self.frozen_graph = tf.Graph()
 

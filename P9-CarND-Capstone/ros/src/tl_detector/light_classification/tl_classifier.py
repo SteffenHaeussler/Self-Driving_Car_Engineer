@@ -10,29 +10,31 @@ class TLClassifier(object):
     def __init__(self):
 
         config_string = rospy.get_param("/traffic_light_config")
-         self.config = yaml.safe_load(config_string)
+        self.config = yaml.safe_load(config_string)
         model_name = 'frozen_inference_graph.pb'
 
         if self.config['is_site']:
-            model_path = 'light_classification/model/real_' + model_name
+            model_path = 'light_classification/model/real_frozen_inference_graph.pb'
         else:
-            model_path = 'light_classification/model/sim_' + model_name
+            model_path = 'light_classification/model/sim_frozen_inference_graph.pb'
 
-        self.frozen_graph = tf.Graph()
+        self.graph = tf.Graph()
+        self.threshold = .5
 
-        with self.frozen_graph.as_default():
-            graph_defintion = tf.GraphDef()
+        with self.graph.as_default():
+            od_graph_def = tf.GraphDef()
             with tf.gfile.GFile(model_path, 'rb') as fid:
-                graph_defintion.ParseFromString(fid.read())
-                tf.import_graph_def(graph_defintion, name='')
+                od_graph_def.ParseFromString(fid.read())
+                tf.import_graph_def(od_graph_def, name='')
 
-            self.graph_num_detections = self.frozen_graph.get_tensor_by_name('num_detections:0')
-            self.graph_image_tensor = self.frozen_graph.get_tensor_by_name('image_tensor:0')
-            self.graph_boxes = self.frozen_graph.get_tensor_by_name('detection_boxes:0')
-            self.graph_scores = self.frozen_graph.get_tensor_by_name('detection_scores:0')
-            self.graph_classes = self.frozen_graph.get_tensor_by_name('detection_classes:0')
+            self.image_tensor = self.graph.get_tensor_by_name('image_tensor:0')
+            self.boxes = self.graph.get_tensor_by_name('detection_boxes:0')
+            self.scores = self.graph.get_tensor_by_name('detection_scores:0')
+            self.classes = self.graph.get_tensor_by_name('detection_classes:0')
+            self.num_detections = self.graph.get_tensor_by_name('num_detections:0')
 
-        self.sess = tf.Session(graph=self.frozen_graph)
+        self.sess = tf.Session(graph=self.graph)
+#         self.sess = tf.Session(graph=self.frozen_graph)
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image

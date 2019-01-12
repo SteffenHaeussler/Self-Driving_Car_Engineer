@@ -18,23 +18,22 @@ class TLClassifier(object):
         else:
             model_path = 'light_classification/model/sim_frozen_inference_graph.pb'
 
-        self.graph = tf.Graph()
+        self.frozen_graph = tf.Graph()
         self.threshold = .5
 
-        with self.graph.as_default():
+        with self.frozen_graph.as_default():
             od_graph_def = tf.GraphDef()
             with tf.gfile.GFile(model_path, 'rb') as fid:
                 od_graph_def.ParseFromString(fid.read())
                 tf.import_graph_def(od_graph_def, name='')
 
-            self.image_tensor = self.graph.get_tensor_by_name('image_tensor:0')
-            self.boxes = self.graph.get_tensor_by_name('detection_boxes:0')
-            self.scores = self.graph.get_tensor_by_name('detection_scores:0')
-            self.classes = self.graph.get_tensor_by_name('detection_classes:0')
-            self.num_detections = self.graph.get_tensor_by_name('num_detections:0')
+            self.image_tensor = self.frozen_graph.get_tensor_by_name('image_tensor:0')
+            self.boxes = self.frozen_graph.get_tensor_by_name('detection_boxes:0')
+            self.scores = self.frozen_graph.get_tensor_by_name('detection_scores:0')
+            self.classes = self.frozen_graph.get_tensor_by_name('detection_classes:0')
+            self.num_detections = self.frozen_graph.get_tensor_by_name('num_detections:0')
 
-        self.sess = tf.Session(graph=self.graph)
-#         self.sess = tf.Session(graph=self.frozen_graph)
+        self.sess = tf.Session(graph=self.frozen_graph)
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image
@@ -47,13 +46,22 @@ class TLClassifier(object):
 
             input_image = np.expand_dims(image, axis=0)
 
-            predict = self.sess.run([self.graph_boxes, self.graph_scores, self.graph_classes, self.graph_num_detections],
-                                         feed_dict={self.graph_image_tensor: input_image})
+            start = datetime.datetime.now()
+            predict = self.sess.run([self.boxes, self.scores, self.classes, self.num_detections],
+                                         feed_dict={self.image_tensor: input_image})
+
+            end = datetime.datetime.now()
+            diff = end - start
+#             print(diff.total_seconds())
 
         probility = np.squeeze(predict[1])
         predicted_classes = np.squeeze(predict[2]).astype(np.int32)
 
-        if probility[0] > .6:
+        if probility[0] > self.threshold:
+            print('Prob: ', probility[0])
+            print('Class: ', predicted_classes[0])
+
+        if probility[0] > self.threshold:
             if predicted_classes[0] == 1:
                 return TrafficLight.GREEN
 

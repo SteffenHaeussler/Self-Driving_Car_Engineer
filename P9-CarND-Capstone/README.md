@@ -4,8 +4,9 @@ Team Somerville
 
 Team Lead:
 
-Team Member:
 * Wei Xiong   xiongweies@gmail.com
+
+Team Member:
 
 * T-Notch    t.notch@zoho.eu
 * Yimeng Zhu    yimeng.zhu0821@gmail.com

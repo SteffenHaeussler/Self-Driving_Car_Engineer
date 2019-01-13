@@ -11,6 +11,8 @@ import datetime
 # I decided to use the trained one from my team co-worker https://github.com/YimengZhu/CarND-Capstone
 # He used more ressources (GPUs) than me, and so the classification is much better
 # if requested, i always can show with my trained models
+# basically i followed https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md
+# and used as my team member ssd_mobilenet_v1_coco
 
 class TLClassifier(object):
     def __init__(self):

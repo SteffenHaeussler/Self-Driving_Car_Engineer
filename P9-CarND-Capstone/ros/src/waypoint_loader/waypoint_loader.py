@@ -1,159 +1,86 @@
 #!/usr/bin/env python
 
-import rospy
-from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Int32
-from styx_msgs.msg import Lane, Waypoint
-from scipy.spatial import KDTree
+import os
+import csv
 import math
-import numpy as np
 
-'''
-This node will publish waypoints from the car's current position to some `x` distance ahead.
+from geometry_msgs.msg import Quaternion
 
-As mentioned in the doc, you should ideally first implement a version which does not care
-about traffic lights or obstacles.
+from styx_msgs.msg import Lane, Waypoint
 
-Once you have created dbw_node, you will update this node to use the status of traffic lights too.
+import tf
+import rospy
 
-Please note that our simulator also provides the exact location of traffic lights and their
-current status in `/vehicle/traffic_lights` message. You can use this message to build this node
-as well as to verify your TL classifier.
-
-TODO (for Yousuf and Aaron): Stopline location for each traffic light.
-'''
-
-LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
+CSV_HEADER = ['x', 'y', 'z', 'yaw']
 MAX_DECEL = 1.0
 
-class WaypointUpdater(object):
+
+class WaypointLoader(object):
+
     def __init__(self):
-        rospy.init_node('waypoint_updater')
+        rospy.init_node('waypoint_loader', log_level=rospy.DEBUG)
 
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-        rospy.Subscriber('/traffic_waypoint',Int32, self.traffic_cb)
+        self.pub = rospy.Publisher('/base_waypoints', Lane, queue_size=1, latch=True)
 
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-        # rospy.Subscriber('/traffic_waypoint', Lane, self.waypoints_cb)
-        # rospy.Subscriber('/obstacle_waypoint', Lane, self.obstacle_cb)
+        self.velocity = self.kmph2mps(rospy.get_param('~velocity'))
+        self.new_waypoint_loader(rospy.get_param('~path'))
+        rospy.spin()
 
-        self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-
-        # TODO: Add other member variables you need below
-        self.pose = None
-        self.base_waypoints = None
-        self.waypoints_2d = None
-        self.waypoint_tree = None
-        self.stopline_wp_idx = -1
-
-        self.loop()
-        # rospy.spin()
-
-    def loop(self):
-        rate = rospy.Rate(10)
-        while not rospy.is_shutdown():
-            if self.pose and self.base_waypoints:
-                closest_idx = self.get_closest_waypoint()
-                self.publish_waypoints(closest_idx)
-            rate.sleep()
-
-    def get_closest_waypoint(self):
-        x = self.pose.pose.position.x
-        y = self.pose.pose.position.y
-
-        closest_idx = self.waypoint_tree.query([x, y], 1)[1]
-
-        closest_cord = self.waypoints_2d[closest_idx]
-        prev_coord = self.waypoints_2d[closest_idx-1]
-
-        cl_vec = np.array(closest_cord)
-        prev_vec = np.array(prev_coord)
-        pose_vec = np.array([x, y])
-
-        val = np.dot(cl_vec - prev_coord, pose_vec - cl_vec)
-
-        if val > 0:
-            closest_idx = (closest_idx + 1) % len(self.waypoints_2d)
-
-        return closest_idx
-
-    def publish_waypoints(self, closest_idx):
-        final_lane = self.generate_lane()
-        self.final_waypoints_pub.publish(final_lane)
-
-    def generate_lane(self):
-
-        lane = Lane()
-
-        closest_idx = self.get_closest_waypoint()
-        farthest_idx = closest_idx + LOOKAHEAD_WPS
-        base_waypoints = self.base_waypoints.waypoints[closest_idx:farthest_idx]
-
-        if self.stopline_wp_idx == -1 or (self.stopline_wp_idx >= farthest_idx):
-            lane.waypoints = base_waypoints
+    def new_waypoint_loader(self, path):
+        if os.path.isfile(path):
+            waypoints = self.load_waypoints(path)
+            self.publish(waypoints)
+            rospy.loginfo('Waypoint Loded')
         else:
-            lane.waypoints = self.decelerate_waypoints(base_waypoints, closest_idx)
+            rospy.logerr('%s is not a file', path)
 
-        return lane
+    def quaternion_from_yaw(self, yaw):
+        return tf.transformations.quaternion_from_euler(0., 0., yaw)
 
-    def decelerate_waypoints(self, waypoints, closest_idx):
+    def kmph2mps(self, velocity_kmph):
+        return (velocity_kmph * 1000.) / (60. * 60.)
 
-        temp = []
-        for i, wp in enumerate(waypoints):
+    def load_waypoints(self, fname):
+        waypoints = []
+        with open(fname) as wfile:
+            reader = csv.DictReader(wfile, CSV_HEADER)
+            for wp in reader:
+                p = Waypoint()
+                p.pose.pose.position.x = float(wp['x'])
+                p.pose.pose.position.y = float(wp['y'])
+                p.pose.pose.position.z = float(wp['z'])
+                q = self.quaternion_from_yaw(float(wp['yaw']))
+                p.pose.pose.orientation = Quaternion(*q)
+                p.twist.twist.linear.x = float(self.velocity)
 
-            p = Waypoint()
-            p.pose = wp.pose
+                waypoints.append(p)
+        return self.decelerate(waypoints)
 
-            stop_idx = max(self.stopline_wp_idx - closest_idx - 2, 0)
-            dist = self.distance(waypoints, i, stop_idx)
-            vel = math.sqrt(2*MAX_DECEL*dist)
+    def distance(self, p1, p2):
+        x, y, z = p1.x - p2.x, p1.y - p2.y, p1.z - p2.z
+        return math.sqrt(x*x + y*y + z*z)
 
-            if vel < 1.0:
-                vel = 0.0
+    def decelerate(self, waypoints):
+        last = waypoints[-1]
+        last.twist.twist.linear.x = 0.
+        for wp in waypoints[:-1][::-1]:
+            dist = self.distance(wp.pose.pose.position, last.pose.pose.position)
+            vel = math.sqrt(2 * MAX_DECEL * dist)
+            if vel < 1.:
+                vel = 0.
+            wp.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
+        return waypoints
 
-            p.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
-            temp.append(p)
-
-        return temp
-
-    def pose_cb(self, msg):
-        # TODO: Implement
-        self.pose = msg
-
-    def waypoints_cb(self, waypoints):
-        # TODO: Implement
-        self.base_waypoints = waypoints
-        if not self.waypoints_2d:
-            self.waypoints_2d = [[waypoint.pose.pose.position.x, waypoint.pose.pose.position.y]
-                                  for waypoint in waypoints.waypoints]
-            self.waypoint_tree = KDTree(self.waypoints_2d)
-
-    def traffic_cb(self, msg):
-        # TODO: Callback for /traffic_waypoint message. Implement
-        self.stopline_wp_idx = msg.data
-
-    def obstacle_cb(self, msg):
-        # TODO: Callback for /obstacle_waypoint message. We will implement it later
-        pass
-
-    def get_waypoint_velocity(self, waypoint):
-        return waypoint.twist.twist.linear.x
-
-    def set_waypoint_velocity(self, waypoints, waypoint, velocity):
-        waypoints[waypoint].twist.twist.linear.x = velocity
-
-    def distance(self, waypoints, wp1, wp2):
-        dist = 0
-        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
-        for i in range(wp1, wp2+1):
-            dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
-            wp1 = i
-        return dist
+    def publish(self, waypoints):
+        lane = Lane()
+        lane.header.frame_id = '/world'
+        lane.header.stamp = rospy.Time(0)
+        lane.waypoints = waypoints
+        self.pub.publish(lane)
 
 
 if __name__ == '__main__':
     try:
-        WaypointUpdater()
+        WaypointLoader()
     except rospy.ROSInterruptException:
-        rospy.logerr('Could not start waypoint updater node.')
+        rospy.logerr('Could not start waypoint node.')

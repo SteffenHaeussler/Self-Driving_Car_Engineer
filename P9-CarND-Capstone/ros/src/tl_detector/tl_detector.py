@@ -23,7 +23,7 @@ class TLDetector(object):
         self.waypoints = None
         self.camera_image = None
         self.waypoints_2d = None
-        self.waypoint_tree = None
+        self.waypoints_tree = None
         self.lights = []
 
         sub1 =rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)

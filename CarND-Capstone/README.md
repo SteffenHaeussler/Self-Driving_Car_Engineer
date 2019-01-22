@@ -65,7 +65,7 @@ unzip traffic_light_bag_file.zip
 3. Play the bag file
 ```bash
 rosbag play -l traffic_light_bag_file/traffic_light_training.bag
-```
+```cd 
 4. Launch your project in site mode
 ```bash
 cd CarND-Capstone/ros
